@@ -7,9 +7,22 @@ import whisper
 
 from langchain.llms import OpenAI
 
+from langchain.embeddings.sentence_transformer import SentenceTransformerEmbeddings
+from langchain.vectorstores import Chroma
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.chains import ConversationalRetrievalChain
+
+import time
+
 process_video = None
 process_question = None
 go_to_timestamp = None
+
+if 'transcript' not in st.session_state:
+    st.session_state.transcript = ""
+
+if 'summary' not in st.session_state:
+    st.session_state.summary = ""
 
 st.set_page_config(
     page_title='YouTube Q & A',
@@ -70,23 +83,23 @@ if transcript != "":
 
     with st.spinner("Generating summary"):
 
-        summary = generate_summary(transcript, llm)
+        st.session_state.summary = generate_summary(transcript, llm)
 
     # print(summary)
     with open('summary.txt', 'w') as f:
-        f.write(summary)
+        f.write(st.session_state.summary)
 
     st.success("Summary generated")
     st.write("This is the summary of the video")
-    st.write(summary)
+    st.write(st.session_state.summary)
 else:
     pass
 
 process_question = None
 
-@st.cache_data
-def call_get_answer(question):
-    return get_answer(question)
+# @st.cache_data
+# def call_get_answer(question):
+#     return get_answer(question)
 
 if 'process_question_clicked' not in st.session_state:
     st.session_state.process_question_clicked = False
@@ -95,78 +108,81 @@ def process_question_callback():
     st.session_state.process_question_clicked = True
 
 
-if summary != "":
-    col_1, col_2 = st.columns([0.8, 0.2])
-    with col_1:
-        question = st.text_input(label='Question', label_visibility='collapsed')
-    with col_2:
-        process_question = st.button('Get Answer', on_click=process_question_callback)
+# if transcript != "":
+#     col_1, col_2 = st.columns([0.8, 0.2])
+#     with col_1:
+#         question = st.text_input(label='Question', label_visibility='collapsed')
+#     with col_2:
+#         process_question = st.button('Get Answer', on_click=process_question_callback)
 
 
-# program variables and functions
+# if process_question or st.session_state.process_question_clicked:
+# st.write(st.session_state.transcript)
+if st.session_state.summary != "":
+    # container_3 = st.container()
+    # with container_3:
+    #     with st.spinner('Finding answer...'):
+    #         status, data = call_get_answer(question)
+    #         if status != 'success':
+    #             st.error(data)
+    #             exit(0)
+    #         else:
+    #             answer = data
+    #     st.text('The answer to your question: ')
 
-# @st.cache_data
-# def call_get_summary(transcript, _llm):
-#     return generate_summary(transcript, llm)
+    #     answer_box = st.text_area(
+    #         label='Answer',
+    #         label_visibility='collapsed',
+    #         value=answer,
+    #         disabled=True,
+    #         height=300)
 
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1500, chunk_overlap=150)
 
-# @st.cache_data
-# def call_get_answer(question):
-#     return get_answer(question)
+    documents = text_splitter.create_documents([transcript])
 
-# # session state management
+    # st.write(documents)
 
-# if process_video or st.session_state.process_video_clicked:
-#     if yt_url == "":
-#         st.error("Please provide a valid link!")
-#         exit(0)
+    embedding_function = SentenceTransformerEmbeddings(model_name="all-MiniLM-L6-v2")
+    vectorstore = Chroma.from_documents(documents, embedding_function)
+    vectorstore.persist()
 
-#     st.session_state.process_video_clicked = True
-#     st.divider()
-#     container_1 = st.container()
-#     with container_1:
-#         with st.spinner('Generating summary...'):
-#             llm = OpenAI(temperature=0, openai_api_key=user_secret)
-#             summary = generate_summary(transcript, llm)
-#         if summary == '':
-#             st.error(summary)
-#             exit(0)
-#         else:
-#             st.text('Summary of the video:')
-#             summary_box = st.text_area(
-#                 label='Summary',
-#                 label_visibility='collapsed',
-#                 value=summary,
-#                 disabled=True,
-#                 height=300)
-#         st.divider()
-#         st.text('Type your question here: ')
-        # col_1, col_2 = st.columns([0.8, 0.2])
-        # with col_1:
-        #     question = st.text_input(
-        #         label = 'Question',
-        #         label_visibility = 'collapsed',
-        #         )
-        # with col_2:
-        #     process_question = st.button('Get Answer', on_click=process_question_callback)
+    st.write(vectorstore.get()['ids'])
 
-# answer container
+    qa = ConversationalRetrievalChain.from_llm(llm, vectorstore.as_retriever())
 
-if process_question or st.session_state.process_question_clicked:
-    container_3 = st.container()
-    with container_3:
-        with st.spinner('Finding answer...'):
-            status, data = call_get_answer(question)
-            if status != 'success':
-                st.error(data)
-                exit(0)
-            else:
-                answer, st.session_state.timestamp = data[0], data[1]
-        st.text('The answer to your question: ')
+    # Initialize chat history
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
 
-        answer_box = st.text_area(
-            label='Answer',
-            label_visibility='collapsed',
-            value=answer,
-            disabled=True,
-            height=300)
+    # Display chat messages from history on app rerun
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    st.write(vectorstore.embeddings)
+
+    # Accept user input
+    if prompt := st.chat_input("Ask your questions?"):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        # process_question_callback()
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        st.write(vectorstore.embeddings)
+
+        # Query the assistant using the latest chat history
+        result = qa({"question": prompt, "chat_history": [(message["role"], message["content"]) for message in st.session_state.messages]})
+        # st.write(qa({"question": "What OpenAI aims to evalute"}))
+        # Display assistant response in chat message container
+        # with st.chat_message("assistant"):
+        #     message_placeholder = st.empty()
+        #     # full_response = ""
+        #     full_response = result["answer"]
+        #     message_placeholder.markdown(full_response + "|")
+        # message_placeholder.markdown(full_response)
+        # print(full_response)
+        # st.session_state.messages.append({"role": "assistant", "content": full_response})
+
+        #sleep 30 seconds
+        time.sleep(30)
+
