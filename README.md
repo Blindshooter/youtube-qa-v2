@@ -1,4 +1,4 @@
-# youtube-summary
-Generate summary of youtube video and chat with it
+# youtube-qa-v2
+This is v2 of the repository that allows you to generate summary and chat with your vido
 
-UPDATE - chat_input function is not supported inside of the tab by streamlit. Will come back to it, when it is supported.
+
