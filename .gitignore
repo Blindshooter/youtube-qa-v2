@@ -1,0 +1,8 @@
+yt-sum/
+test.ipynb
+youtube_video.mp4
+transcript*.txt
+*.pyc
+summary.txt
+.DS_Store
+chat_with_data.py
