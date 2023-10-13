@@ -183,6 +183,5 @@ if st.session_state.summary != "":
         # print(full_response)
         # st.session_state.messages.append({"role": "assistant", "content": full_response})
 
-        #sleep 30 seconds
+        # sleep 30 seconds
         time.sleep(30)
-
